@@ -256,6 +256,7 @@ void CollisionSolver::computeImpactZone()
 
 	    updateImpactZoneVelocity(numZones);
             std::cout <<"    #"<<niter++ << ": " << abt_collision->getCount() 
+            //std::cout <<"    #"<< niter++ << ": " << cd_pair
                       << " pair of collision tris" << std::endl;
 	    std::cout <<"     "<< numZones
 		      <<" zones of impact" << std::endl;
@@ -390,6 +391,8 @@ void CollisionSolver::aabbProximity() {
 void CollisionSolver::detectProximity()
 {
         /*
+        start_clock("cgal_proximity");
+
 	int num_pairs = 0;
         int numBox = 0;
         double time; 
@@ -400,8 +403,10 @@ void CollisionSolver::detectProximity()
         */
         aabbProximity();
 	updateAverageVelocity();
+        stop_clock("cgal_proximity");
 	if (debugging("collision"))
 	std::cout << abt_proximity->getCount() 
+	//std::cout << num_pairs
                   << " pair of proximity" << std::endl;
 }
 
@@ -441,6 +446,7 @@ void CollisionSolver::detectCollision()
 	//
 	while(is_collision){
 	    is_collision = false;
+	    start_clock("cgal_collision");
             /*
             int numBox = 0;
 	    int cd_pair = 0;
@@ -449,15 +455,15 @@ void CollisionSolver::detectCollision()
 		  hseList.end(),reportCollision(numBox, 
                     is_collision,cd_pair,this), traitsForCollision());
             */
-	    start_clock("cgal_collision");
 	    aabbCollision();
-	    stop_clock("cgal_collision");
             is_collision = abt_collision->getCollsnState();
+	    stop_clock("cgal_collision");
 	    if (cd_count++ == 0 && is_collision) 
 		setHasCollision(true);
 
 	    updateAverageVelocity();
 	    std::cout<<"    #"<<niter << ": " << abt_collision->getCount() 
+	    //std::cout<<"    #"<<niter << ": " << cd_pair
 		     << " pair of collision tris" << std::endl;
 	    if (++niter > MAX_ITER) break;
 	}
@@ -630,6 +636,24 @@ void CollisionSolver::updateFinalForRG()
         double dt = getTimeStepSize();
 	std::vector<int> mrg;
 	std::map<int, bool> visited;
+
+        for (auto it = hseList.begin(); it < hseList.end(); it++) {
+             for (int i = 0; i < (*it)->num_pts(); i++) {
+                  pt = (*it)->Point_of_hse(i);
+                  sl = (STATE*)left_state(pt);
+                  if (!isMovableRigidBody(pt)) continue;
+
+                  int rg_index = body_index(pt->hs);
+
+                  if ((visited.count(rg_index) == 0) || (!visited[rg_index]))
+                  {
+                       double* com = center_of_mass(pt->hs);
+
+                       mrg_com[rg_index] = std::vector<double>(com, com+3);
+                       visited[rg_index] = true;
+                  }
+             }
+        }
 
 	for (std::vector<CD_HSE*>::iterator it = hseList.begin();
              it < hseList.end(); ++it)
