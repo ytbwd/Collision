@@ -161,8 +161,8 @@ void CollisionSolver::computeAverageVelocity(){
 	POINT* pt;
         STATE* sl; 
 	double dt = getTimeStepSize();
-	double max_speed = 0, *max_vel = NULL;
-	POINT* max_pt;
+	double max_speed = 0, *max_vel = nullptr;
+	POINT* max_pt=nullptr;
 	//#pragma omp parallel for private(pt,sl)
         for (std::vector<CD_HSE*>::iterator it = hseList.begin();
                 it < hseList.end(); ++it){
@@ -193,16 +193,19 @@ void CollisionSolver::computeAverageVelocity(){
         }
 	if (debugging("collision"))
 	{
-	    std::cout << "Maximum average velocity is " 
-		      << max_vel[0] << " "
-		      << max_vel[1] << " "
-		      << max_vel[2] << std::endl; 
-	    sl = (STATE*)left_state(max_pt);
-	    printf("x_old = [%f %f %f]\n",
-		   sl->x_old[0],sl->x_old[1],sl->x_old[2]);
-	    printf("x_new = [%f %f %f]\n",
-		   Coords(max_pt)[0],Coords(max_pt)[1],Coords(max_pt)[2]);
-	    printf("dt = %f\n",dt);
+            if (max_vel)
+	        std::cout << "Maximum average velocity is " 
+		          << max_vel[0] << " "
+		          << max_vel[1] << " "
+		          << max_vel[2] << std::endl; 
+            if (max_pt) {
+	        sl = (STATE*)left_state(max_pt);
+	        printf("x_old = [%f %f %f]\n",
+		        sl->x_old[0],sl->x_old[1],sl->x_old[2]);
+	        printf("x_new = [%f %f %f]\n",
+		        Coords(max_pt)[0],Coords(max_pt)[1],Coords(max_pt)[2]);
+	        printf("dt = %f\n",dt);
+            }
 	}
 	//restore coords of points to old coords !!!
 	//x_old is the only valid coords for each point 
@@ -703,7 +706,7 @@ void CollisionSolver::updateAverageVelocity()
 	POINT *p;
 	STATE *sl;
 	double maxSpeed = 0;
-	double* maxVel = NULL;
+	double* maxVel = nullptr;
 
 #ifdef __VTK__
 	if (debugging("CollisionImpulse")){
@@ -768,7 +771,7 @@ void CollisionSolver::updateAverageVelocity()
 	if (getTimeStepSize() > 0.0)
 	    updateImpactZoneVelocityForRG(); // test for moving objects
 	if (debugging("collision"))
-	if (maxVel != NULL)
+	if (maxVel != nullptr)
 	    printf("    max velocity = [%f %f %f]\n",maxVel[0],maxVel[1],maxVel[2]);
 	if (debugging("collision"))
 	    printDebugVariable();
