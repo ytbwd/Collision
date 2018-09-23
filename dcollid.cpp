@@ -46,7 +46,15 @@ int CollisionSolver::is_coplanar = 0;
 int CollisionSolver::edg_to_edg = 0;
 int CollisionSolver::pt_to_tri = 0;
 
-//functions in the abstract base class
+// To use Pimpl idiom by unique_ptr, special member function 
+// should be explicit declared in header file and defined in 
+// implementation file
+CollisionSolver::CollisionSolver(int dim):m_dim(dim), abt_proximity(nullptr) {}
+CollisionSolver::CollisionSolver() = default;
+CollisionSolver::CollisionSolver(CollisionSolver&& rhs) = default;
+CollisionSolver& CollisionSolver::operator=(CollisionSolver&& rhs) = default;
+CollisionSolver::~CollisionSolver() = default;
+
 void CollisionSolver::clearHseList(){
 	for (unsigned i = 0; i < hseList.size(); ++i){
 		delete hseList[i];
@@ -171,10 +179,14 @@ void CollisionSolver::computeAverageVelocity(){
                 sl = (STATE*)left_state(pt); 
                 for (int j = 0; j < 3; ++j)
 		{
-		    if (dt > ROUND_EPS)
+		    if (dt > ROUND_EPS) {
                         sl->avgVel[j] = (Coords(pt)[j] - sl->x_old[j])/dt;
-		    else
+                        sl->avgVel_old[j] = sl->avgVel[j];
+                    }
+		    else {
 		        sl->avgVel[j] = 0.0;
+                        sl->avgVel_old[j] = 0.0;
+                    }
 		    if (std::isnan(sl->avgVel[j]) || std::isinf(sl->avgVel[j]))
 		    {
 			std::cout<<"nan avgVel" << std::endl;
@@ -242,7 +254,7 @@ void CollisionSolver::computeImpactZone()
 	    //start UF alogrithm
 	    //merge four pts if collision happens
 
-	    start_clock("cgal_impactzone");
+	    start_clock("dynamic_AABB_collision");
             aabbCollision();
             is_collision = abt_collision->getCollsnState();
             /*
@@ -253,7 +265,7 @@ void CollisionSolver::computeImpactZone()
                   hseList.end(),reportCollision(numBox, is_collision,
                     cd_pair,this), traitsForCollision());
             */
-	    stop_clock("cgal_impactzone");
+	    stop_clock("dynamic_AABB_collision");
  
             updateAverageVelocity();
 
@@ -295,8 +307,8 @@ void CollisionSolver::updateImpactZoneVelocity(int &nZones)
 {
 	POINT* pt;
 	int numZones = 0;
-	unsortHseList(hseList);
 
+	unsortHseList(hseList);
 	for (std::vector<CD_HSE*>::iterator it = hseList.begin();
 	     it < hseList.end(); ++it){
 	    for (int i = 0; i < (*it)->num_pts(); ++i){
@@ -369,10 +381,10 @@ void CollisionSolver::resolveCollision()
 // and query for proximity detection process
 void CollisionSolver::aabbProximity() {
     // if first time, build the tree and AABB elements and node
-    if (!abt_proximity) {
-        abt_proximity = new AABBTree;
+    if (!abt_proximity.get()) {
+        abt_proximity = std::move(std::make_unique<AABBTree>(STATIC));
         for (auto it = hseList.begin(); it != hseList.end(); it++) {
-             AABB* ab = new AABB (*it, aabb::type::STATIC);
+             AABB* ab = new AABB (*it, abt_proximity->getType());
              abt_proximity->addAABB(ab);
         }
         abt_proximity->updatePointMap(hseList);
@@ -388,7 +400,7 @@ void CollisionSolver::aabbProximity() {
         }
     }
     // query for collision detection of AABB elements
-    abt_proximity->query(this, aabb::type::STATIC);
+    abt_proximity->query(this);
 }
 
 void CollisionSolver::detectProximity()
@@ -404,9 +416,10 @@ void CollisionSolver::detectProximity()
                              reportProximity(time, numBox, num_pairs,this),
 			     traitsForProximity());
         */
+        start_clock("dynamic_AABB_proximity");
         aabbProximity();
+        stop_clock("dynamci_AABB_proximity");
 	updateAverageVelocity();
-        stop_clock("cgal_proximity");
 	if (debugging("collision"))
 	std::cout << abt_proximity->getCount() 
 	//std::cout << num_pairs
@@ -415,10 +428,10 @@ void CollisionSolver::detectProximity()
 
 // AABB tree for collision detection process
 void CollisionSolver::aabbCollision() {
-    if (!abt_collision) {
-        abt_collision = new AABBTree;
+    if (!abt_collision.get()) {
+        abt_collision = std::move(std::make_unique<AABBTree>(MOVING));
         for (auto it = hseList.begin(); it != hseList.end(); it++) {
-             AABB* ab = new AABB (*it, aabb::type::MOVING, s_dt);
+             AABB* ab = new AABB (*it, abt_collision->getType(), s_dt);
              abt_collision->addAABB(ab);
         }
         abt_collision->updatePointMap(hseList);
@@ -432,7 +445,7 @@ void CollisionSolver::aabbCollision() {
             volume = abt_collision->getVolume();
         }
     }
-    abt_collision->query(this, aabb::type::MOVING);
+    abt_collision->query(this);
 }
 
 void CollisionSolver::detectCollision()
@@ -449,7 +462,7 @@ void CollisionSolver::detectCollision()
 	//
 	while(is_collision){
 	    is_collision = false;
-	    start_clock("cgal_collision");
+	    start_clock("dynamic_AABB_collision");
             /*
             int numBox = 0;
 	    int cd_pair = 0;
@@ -460,7 +473,7 @@ void CollisionSolver::detectCollision()
             */
 	    aabbCollision();
             is_collision = abt_collision->getCollsnState();
-	    stop_clock("cgal_collision");
+	    stop_clock("dynamic_AABB_collision");
 	    if (cd_count++ == 0 && is_collision) 
 		setHasCollision(true);
 
@@ -762,8 +775,10 @@ void CollisionSolver::updateAverageVelocity()
 		if (debugging("collision")){
 		    //debugging: print largest speed
 		    double speed = Mag3d(sl->avgVel);
-		    if (speed > maxSpeed)
+		    if (speed > maxSpeed) {
 			maxVel = sl->avgVel;
+                        maxSpeed = speed;
+                    }
 		}
 		sorted(p) = YES;
 	    }

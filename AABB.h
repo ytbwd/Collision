@@ -11,11 +11,8 @@
 // header file for AABB tree
 // axis-aligned bounding box class
 using CPoint = std::vector<double>;
-
-namespace aabb {
-    // type is used to separate proximity and collition check
-    enum type{STATIC, MOVING};
-}
+// scope enum type forward declaration
+enum class MotionState;
 
 class Node;
 class AABBTree;
@@ -33,13 +30,19 @@ class AABB {
     bool contain(const AABB*);
     CD_HSE* hse = nullptr;
     double dt;
-    aabb::type abType;
+    MotionState abType;
 public:
     // constructor
     AABB() {}
-    AABB(CD_HSE*, aabb::type);
-    AABB(CD_HSE*, aabb::type, double);
+    AABB(CD_HSE*, MotionState);
+    AABB(CD_HSE*, MotionState, double);
     AABB(const CPoint&, const CPoint&);
+    // explicit saying that we need a default version of 
+    // copy and move operations 
+    AABB(const AABB&) = default;
+    AABB& operator=(const AABB&) = default;
+    AABB(AABB&&) = default;
+    AABB& operator=(AABB&&) = default;
     // merge this with anther AABB to get a
     // merged AABB and construct the corresponding AABB tree
     AABB merge(const AABB&) const;
@@ -58,16 +61,16 @@ class Node {
     AABB box;
     // if leaf, point to the corresponding AABB
     // empty for branch
-    AABB* data;
+    std::unique_ptr<AABB> data;
     // parent node
-    Node* parent = nullptr;
+    std::weak_ptr<Node> parent;
     // left and right children node
-    Node* left = nullptr;
-    Node* right = nullptr;
+    std::shared_ptr<Node> left;
+    std::shared_ptr<Node> right;
     void updateBranch();
 public:
     // make this node to be brance from two Node parameter
-    void setBranch(Node*, Node*);
+    void setBranch(std::shared_ptr<Node>, std::shared_ptr<Node>, std::shared_ptr<Node>);
     // judge if this node is a leaf
     bool isLeaf();
     // set an AABB element to be a leaf
@@ -77,22 +80,15 @@ public:
     Node* getSibling() const;
 };
 
-using CollidPairList = std::vector<std::pair<AABB*, AABB*>>;
-using CollidPairSet = std::set<std::pair<Node*, Node*>>;
-
 class AABBTree {
-    Node* root = nullptr;
-    // store the collied pair
-    CollidPairList colldList;
-    // used to check if certain pair is considered or not.
-    CollidPairSet collidSet;
+    std::shared_ptr<Node> root;
     // node needed to be removed and reinsert to the tree
     std::unordered_map<long, POINT*> ump;
     // map from object's indices (2 or 3 points' global indices)
     // to corresponding CD_HSE* in collision library 
     std::map<std::vector<long>, CD_HSE*> vhMap;
     std::unordered_set<Node*> nodeSet;
-    std::vector<Node*> nodeArray;
+    std::vector<std::shared_ptr<Node>> nodeArray;
     int count;
     int numLeaf = 0;
     double treeHeight(Node*); 
@@ -100,16 +96,21 @@ class AABBTree {
     bool isCollsn;
     void queryProximity(Node*, CollisionSolver*);
     bool queryCollision(Node*, CollisionSolver*);
-public:
-    // add an AABB element into a tree
-    void addAABB(AABB*);
     // insert a node into the subtree with parent 
     // as the root
-    void insertNode(Node*, Node*&);
+    void insertNode(std::shared_ptr<Node>, std::shared_ptr<Node>&);
+    MotionState type;
+public:
+    AABBTree(int);
+    // don't want tree to be copied or moved
+    AABBTree(const AABBTree&) = delete;
+    AABBTree& operator=(const AABBTree&) = delete;
+    AABBTree(AABBTree&&) = delete;
+    AABBTree& operator=(AABBTree&&) = delete;
+    // add an AABB element into a tree
+    void addAABB(AABB*);
     // query all collid pairs
-    void query(CollisionSolver*, int);
-    // check all collid elements for node parameter
-    const CollidPairList& getCollidPair();
+    void query(CollisionSolver*);
     int getCount() { return count; }
     double getVolume() { return root->box.volume(); } 
     void updateTreeStructure();
@@ -117,6 +118,7 @@ public:
     void setTimeStep(double t) { dt = t; }
     bool getCollsnState() { return isCollsn; }
     void updateAABBTree(const std::vector<CD_HSE*>&);
+    MotionState getType() { return type; }
 };
 
 #endif

@@ -8,6 +8,7 @@
 #include <functional>
 #include <map>
 #include <fstream>
+#include <memory>
 
 #if defined(isnan)
 #undef isnan
@@ -122,14 +123,16 @@ struct traitsForCollision{
 	static std::ptrdiff_t id(Box_parameter b) { return (std::ptrdiff_t)(b);}
 };
 
+// Pimpl(Pointer to Implementation) idiom
+// declare AABBTree but not defined yet
 class AABBTree;
 
 //abstract base class for collision detection and handling
 class CollisionSolver {
 private:
 	//global parameters
-	AABBTree* abt_proximity = nullptr;
-        AABBTree* abt_collision = nullptr;
+	std::unique_ptr<AABBTree> abt_proximity;
+        std::unique_ptr<AABBTree> abt_collision;
         double volume;
 	static double s_eps;
 	static double s_thickness;
@@ -167,7 +170,6 @@ private:
 	virtual bool MovingBondToBond(const BOND*,const BOND*,double) = 0;
 	virtual bool MovingTriToTri(const TRI*,const TRI*,double) = 0;
 	virtual bool MovingTriToBond(const TRI*,const BOND*,double)=0;
-
 protected:
 	int m_dim;
 	std::vector<CD_HSE*> hseList;
@@ -175,8 +177,12 @@ protected:
 	static bool s_detImpZone;
 	void clearHseList();
 public:
-	CollisionSolver(int dim):m_dim(dim){}
-	CollisionSolver(){}
+        enum {STATIC, MOVING};
+	CollisionSolver(int);
+	CollisionSolver();
+        // in case we are going to use move operations
+        CollisionSolver(CollisionSolver&&);
+        CollisionSolver& operator=(CollisionSolver&&);
 	static void setRoundingTolerance(double);
 	static double getRoundingTolerance();
 	static void setFabricThickness(double);
@@ -192,7 +198,7 @@ public:
 	static void setRestitutionCoef(double);
 	static double getRestitutionCoef();
 	static bool getImpZoneStatus();	
-	virtual ~CollisionSolver(){} //virtual destructor
+	virtual ~CollisionSolver(); //virtual destructor
 	//pure virtual functions
 	virtual void assembleFromInterface(const INTERFACE*,double dt) = 0;
 	virtual void createImpZoneForRG(const INTERFACE*) = 0;
